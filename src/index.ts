@@ -3,6 +3,8 @@ import cors from "cors";
 import http from "http";
 import dotenv from "dotenv";
 
+import authRoutes from "./routes/authRoutes";
+
 dotenv.config();
 const app = express();
 const server = http.createServer(app);
@@ -23,6 +25,7 @@ app.use((req, res, next) => {
 });
 
 app.get("/", (req, res) => res.send("Qutta API Running"));
+app.use("/api/auth", authRoutes);
 
 server.listen(PORT, () => {
   console.log(`Server + WebSocket running on http://localhost:${PORT}`);
