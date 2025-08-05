@@ -1,4 +1,10 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand,
+} from "@aws-sdk/client-s3";
 import { v4 as uuidv4 } from "uuid";
 
 const s3 = new S3Client({
@@ -31,4 +37,30 @@ const uploadToS3 = async (
   return `https://${cloudfront}/${key}`;
 };
 
-export { uploadToS3 };
+const deleteFolderFromS3 = async (folderPrefix: string): Promise<void> => {
+  const bucket = process.env.S3_BUCKET_NAME!;
+
+  const listCommand = new ListObjectsV2Command({
+    Bucket: bucket,
+    Prefix: folderPrefix,
+  });
+
+  const listedObjects = await s3.send(listCommand);
+
+  if (!listedObjects.Contents || listedObjects.Contents.length === 0) {
+    console.log(`No objects found under ${folderPrefix}`);
+    return;
+  }
+
+  const deleteCommand = new DeleteObjectsCommand({
+    Bucket: bucket,
+    Delete: {
+      Objects: listedObjects.Contents.map((item) => ({ Key: item.Key! })),
+    },
+  });
+
+  await s3.send(deleteCommand);
+  console.log(`Deleted all objects under ${folderPrefix}`);
+};
+
+export { uploadToS3, deleteFolderFromS3 };

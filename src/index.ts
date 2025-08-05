@@ -9,6 +9,7 @@ import businessRoutes from "./routes/business";
 import favoriteRoutes from "./routes/favorites";
 import businessAvailability from "./routes/businessAvailability";
 import bookingRoute from "./routes/booking";
+import notificationRoutes from "./routes/notification";
 
 dotenv.config();
 const app = express();
@@ -36,6 +37,7 @@ app.use("/api/business", businessRoutes);
 app.use("/api/favorite", favoriteRoutes);
 app.use("/api/businesses", businessAvailability);
 app.use("/api/booking", bookingRoute);
+app.use("/notifications", notificationRoutes);
 
 server.listen(PORT, () => {
   console.log(`Server + WebSocket running on http://localhost:${PORT}`);

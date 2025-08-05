@@ -1,6 +1,7 @@
 import { query } from "../config/db";
 import { Request, Response } from "express";
 import { AuthRequest } from "../middleware/auth";
+import { sendPushNotification } from "../utils/sendPushNotification";
 
 export const createBooking = async (req: AuthRequest, res: Response) => {
   try {
@@ -48,6 +49,49 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
          VALUES ($1, $2, $3, $4)`,
         [bookingId, serviceId, parseInt(service.price), service.time]
       );
+    }
+
+    const userResult = await query(
+      `SELECT push_token FROM users WHERE id = $1`,
+      [userId]
+    );
+    const pushToken = userResult[0]?.push_token;
+
+    const businessResult = await query(
+      `SELECT name FROM business_profiles WHERE id = $1`,
+      [business_id]
+    );
+    const businessName = businessResult[0]?.name || "your appointment";
+
+    try {
+      if (pushToken) {
+        const title = `Booking at ${businessName} confirmed!`;
+        const body = `You're booked for ${datetime}. We'll see you soon!`;
+        await sendPushNotification(pushToken, title, body);
+      }
+    } catch (err) {
+      console.error("Failed to send push notification to client:", err);
+    }
+
+    const ownerResult = await query(
+      `SELECT u.push_token, bp.name AS business_name
+        FROM business_profiles bp
+        JOIN users u ON bp.user_id = u.id
+        WHERE bp.id = $1`,
+      [business_id]
+    );
+
+    const ownerPushToken = ownerResult[0]?.push_token;
+    const ownersBusinessName = ownerResult[0]?.business_name;
+
+    try {
+      if (ownerPushToken) {
+        const title = "New Booking Received";
+        const body = `You have a new booking at ${ownersBusinessName} for ${datetime}`;
+        await sendPushNotification(ownerPushToken, title, body);
+      }
+    } catch (err) {
+      console.error("Failed to send push notification to owner:", err);
     }
 
     return res.status(201).json({ success: true, bookingId });
@@ -317,33 +361,88 @@ export const getOwnerBookings = async (req: AuthRequest, res: Response) => {
   }
 };
 
-export const cancelBookingById = async (req: Request, res: Response) => {
+export const cancelBookingById = async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.id;
   const bookingId = req.params.id;
+
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 
   if (!bookingId) {
     return res.status(400).json({ error: "Missing booking ID" });
   }
 
   try {
-    // 1. Update booking status
+    // Check user exists
+    const userResult = await query("SELECT id FROM users WHERE id = $1", [
+      userId,
+    ]);
+    if (userResult.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // ✅ Fetch booking to check status before updating
+    const bookingCheck = await query(
+      "SELECT id, status, user_id, business_id FROM bookings WHERE id = $1",
+      [bookingId]
+    );
+
+    if (bookingCheck.length === 0) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    const booking = bookingCheck[0];
+
+    // ❌ Already cancelled
+    if (booking.status === "cancelled") {
+      return res.status(400).json({ error: "Booking is already cancelled" });
+    }
+
+    // ✅ Update to cancelled
     const result = await query(
       `
       UPDATE bookings
       SET status = 'cancelled'
       WHERE id = $1
-      RETURNING id, status
+      RETURNING id, status, user_id, business_id
       `,
       [bookingId]
     );
 
-    if (result.length === 0) {
-      return res.status(404).json({ error: "Booking not found" });
+    const { user_id: clientId, business_id: businessId } = result[0];
+
+    // 📦 3. Fetch push tokens and business name
+    const [clientData, businessData] = await Promise.all([
+      query(`SELECT push_token FROM users WHERE id = $1`, [clientId]),
+      query(
+        `SELECT users.push_token, business_profiles.name FROM users
+         JOIN business_profiles ON users.id = business_profiles.user_id
+         WHERE business_profiles.id = $1`,
+        [businessId]
+      ),
+    ]);
+
+    const clientPushToken = clientData[0]?.push_token;
+    const ownerPushToken = businessData[0]?.push_token;
+    const businessName = businessData[0]?.name || "A business";
+
+    if (clientPushToken) {
+      const title = "Booking Cancelled";
+      const body = `Your appointment with ${businessName} has been cancelled.`;
+      await sendPushNotification(clientPushToken, title, body);
+    }
+
+    if (ownerPushToken) {
+      const title = "Appointment Cancelled";
+      const body = `A client has cancelled their appointment at ${businessName}.`;
+      await sendPushNotification(ownerPushToken, title, body);
     }
 
     return res.status(200).json({
       id: result[0].id,
       status: result[0].status,
-      message: "Booking cancelled successfully",
+      message: "Booking cancelled and notifications sent",
     });
   } catch (error) {
     console.error("Error cancelling booking:", error);

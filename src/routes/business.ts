@@ -2,6 +2,7 @@ import express from "express";
 import upload from "../middleware/upload";
 import {
   createBusinessProfile,
+  deleteBusiness,
   getAllBusinesses,
   getBusinessById,
   getBusinessesByUserId,
@@ -21,7 +22,8 @@ router.post(
 );
 
 router.get("/businesses", getAllBusinesses);
-router.get("/:userId", getBusinessesByUserId);
 router.get("/item/:id", getBusinessById);
+router.delete("/businesses/:businessId", authenticateToken, deleteBusiness);
+router.get("/:userId", getBusinessesByUserId);
 
 export default router;

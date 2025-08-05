@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { uploadToS3 } from "../lib/s3";
+import { deleteFolderFromS3, uploadToS3 } from "../lib/s3";
 import { AuthRequest } from "../middleware/auth";
 import { query } from "../config/db";
 
@@ -342,6 +342,68 @@ export const getAllBusinesses = async (_req: Request, res: Response) => {
     return res.json(businesses);
   } catch (err) {
     console.error("Error fetching all businesses:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const deleteBusiness = async (req: AuthRequest, res: Response) => {
+  const { businessId } = req.params;
+  const userId = req?.user?.id;
+
+  const business = await query(
+    `SELECT * FROM business_profiles WHERE id = $1 AND user_id = $2`,
+    [businessId, userId]
+  );
+
+  if (business.length === 0) {
+    // Check if business exists but not owned by user
+    const exists = await query(
+      `SELECT 1 FROM business_profiles WHERE id = $1`,
+      [businessId]
+    );
+
+    if (exists.length === 0) {
+      return res.status(404).json({ message: "Business not found." });
+    } else {
+      return res.status(403).json({ message: "You do not own this business." });
+    }
+  }
+
+  try {
+    await query(`DELETE FROM business_images WHERE business_id = $1`, [
+      businessId,
+    ]);
+    await query(`DELETE FROM business_staff WHERE business_id = $1`, [
+      businessId,
+    ]);
+
+    const categories = await query(
+      `SELECT id FROM business_service_categories WHERE business_id = $1`,
+      [businessId]
+    );
+
+    for (const category of categories) {
+      await query(`DELETE FROM business_services WHERE category_id = $1`, [
+        category.id,
+      ]);
+    }
+
+    await query(
+      `DELETE FROM business_service_categories WHERE business_id = $1`,
+      [businessId]
+    );
+
+    await query(`DELETE FROM business_profiles WHERE id = $1`, [businessId]);
+
+    // Delete S3 folders
+    await deleteFolderFromS3(`businessImages/${businessId}/`);
+    await deleteFolderFromS3(`staffImages/${businessId}/`);
+
+    return res
+      .status(200)
+      .json({ message: "Business and related data deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting business:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
