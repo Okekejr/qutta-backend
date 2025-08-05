@@ -16,6 +16,7 @@
     "@aws-sdk/client-s3": "^3.675.0",
     "@aws-sdk/credential-providers": "^3.675.0",
     "@aws-sdk/lib-storage": "^3.675.0",
+    "apple-signin-auth": "^2.0.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.0",

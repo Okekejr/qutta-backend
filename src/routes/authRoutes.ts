@@ -5,6 +5,8 @@ import {
   checkEmailExists,
   authUser,
   deleteUserAccount,
+  appleLogin,
+  setUserRole,
 } from "../controllers/authController";
 import {
   checkEmailExistsSpotter,
@@ -16,6 +18,8 @@ const router = express.Router();
 
 router.post("/register", register);
 router.post("/login", login);
+router.post("/appleLogin", appleLogin);
+router.patch("/setRole", authenticateToken, setUserRole);
 router.post("/checkEmail", checkEmailExists);
 router.get("/me", authenticateToken, authUser);
 router.delete("/delete", authenticateToken, deleteUserAccount);

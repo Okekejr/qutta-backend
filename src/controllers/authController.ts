@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { query } from "../config/db";
 import { AuthRequest } from "../middleware/auth";
+import appleSignin from "apple-signin-auth";
+import crypto from "crypto";
 
 const JWT_SECRET = process.env.JWT_SECRET || "qutta_secret";
 
@@ -11,9 +13,9 @@ export const register = async (req: Request, res: Response) => {
   try {
     const hashed = await bcrypt.hash(password, 10);
     const result = await query(
-      `INSERT INTO users (name, lastName, email, password, role)
+      `INSERT INTO users (name, "lastName", email, password, role)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, name, lastName, email, role, created_at`,
+       RETURNING id, name, "lastName", email, role, created_at`,
       [name, lastName, email, hashed, role]
     );
     const user = result[0];
@@ -101,5 +103,104 @@ export const deleteUserAccount = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error("Error deleting user:", error);
     return res.status(500).json({ error: "Failed to delete user account." });
+  }
+};
+
+export const appleLogin = async (req: Request, res: Response) => {
+  const { identityToken, fullName } = req.body;
+
+  if (!identityToken) {
+    return res.status(400).json({ error: "Missing identityToken" });
+  }
+
+  const expectedAudiences =
+    process.env.NODE_ENV === "production"
+      ? [process.env.APPLE_CLIENT_ID!]
+      : [process.env.APPLE_CLIENT_ID!, "host.exp.Exponent"];
+
+  try {
+    const appleResponse = await appleSignin.verifyIdToken(identityToken, {
+      audience: expectedAudiences,
+      ignoreExpiration: false,
+    });
+
+    const { sub: appleUserId, email } = appleResponse;
+
+    if (!appleUserId) {
+      return res.status(400).json({ error: "Invalid Apple response" });
+    }
+
+    // Use placeholder email if not provided
+    const randomId = crypto.randomBytes(4).toString("hex");
+    const safeEmail =
+      email || `user-${appleUserId}-${randomId}@placeholder.com`;
+
+    // Check if user exists by email
+    let result = await query(`SELECT * FROM users WHERE email = $1`, [
+      safeEmail,
+    ]);
+    let user = result[0];
+    let isNew = false;
+
+    if (!user) {
+      isNew = true;
+
+      // Only fullName.givenName is typically provided
+      const name = fullName?.givenName || "Apple";
+      const lastName = fullName?.familyName || "User";
+
+      // Insert new user without password or role
+      const insertResult = await query(
+        `INSERT INTO users (name, "lastName", email, password, role) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [name, lastName, safeEmail, "", "Client"]
+      );
+
+      user = insertResult[0];
+    }
+
+    // Generate JWT
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET!, {
+      expiresIn: "7d",
+    });
+
+    return res.status(200).json({
+      token,
+      isNew,
+      user: {
+        id: user.id,
+        name: user.name,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        created_at: user.created_at,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown server error";
+    console.error("Apple login error:", err);
+    return res
+      .status(500)
+      .json({ error: "Apple login failed", details: message });
+  }
+};
+
+export const setUserRole = async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.id;
+  const { role } = req.body;
+
+  if (!["Client", "Business"].includes(role)) {
+    return res.status(400).json({ error: "Invalid role provided" });
+  }
+
+  try {
+    const result = await query(
+      `UPDATE users SET role = $1 WHERE id = $2 RETURNING id, name, "lastName", email, role, created_at`,
+      [role, userId]
+    );
+
+    return res.status(200).json({ user: result[0] });
+  } catch (err) {
+    console.error("Failed to update user role:", err);
+    return res.status(500).json({ error: "Failed to update role" });
   }
 };
