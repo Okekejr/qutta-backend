@@ -4,11 +4,10 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const database = new Pool({
-  user: process.env.USER_DB,
-  host: process.env.HOST,
-  database: process.env.NAME,
-  password: process.env.PASS,
-  port: 5432,
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false, // only needed on Railway public connections
+  },
 });
 
 export const query = async (text: string, params: any[] = []) => {
