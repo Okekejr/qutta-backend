@@ -4,6 +4,6 @@ import { savePushToken } from "../controllers/notification";
 
 const router = express.Router();
 
-router.post("/token", authenticateToken, savePushToken);
+router.patch("/token", authenticateToken, savePushToken);
 
 export default router;

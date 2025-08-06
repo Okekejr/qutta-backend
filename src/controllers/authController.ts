@@ -80,6 +80,8 @@ export const checkEmailExists = async (req: Request, res: Response) => {
 export const authUser = async (req: AuthRequest, res: Response) => {
   const { id, name, lastName, role, email, created_at } = req.user!;
 
+  res.setHeader("Cache-Control", "no-store");
+
   res.json({ id, name, email, lastName, role, created_at });
 };
 
