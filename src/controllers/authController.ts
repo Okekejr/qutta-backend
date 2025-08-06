@@ -80,7 +80,12 @@ export const checkEmailExists = async (req: Request, res: Response) => {
 export const authUser = async (req: AuthRequest, res: Response) => {
   const { id, name, lastName, role, email, created_at } = req.user!;
 
-  res.setHeader("Cache-Control", "no-store");
+  res.set({
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+    "Surrogate-Control": "no-store",
+  });
 
   res.json({ id, name, email, lastName, role, created_at });
 };
