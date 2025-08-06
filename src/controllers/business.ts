@@ -27,7 +27,7 @@ export const createBusinessProfile = async (
     // 1. Insert into business_profiles
     const business = await query(
       `INSERT INTO business_profiles (user_id, name, location, latitude, longitude, tag, about, phone_number)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [
         userId,
         name,
