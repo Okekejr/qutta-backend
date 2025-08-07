@@ -37,7 +37,7 @@ app.use("/api/business", businessRoutes);
 app.use("/api/favorite", favoriteRoutes);
 app.use("/api/businesses", businessAvailability);
 app.use("/api/booking", bookingRoute);
-app.use("/notifications", notificationRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 server.listen(PORT, () => {
   console.log(`Server + WebSocket running on http://localhost:${PORT}`);
