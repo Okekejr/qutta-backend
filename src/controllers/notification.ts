@@ -6,6 +6,9 @@ export const savePushToken = async (req: AuthRequest, res: Response) => {
   const userId = req.user?.id;
   const { token } = req.body;
 
+  console.log("Incoming push token:", token);
+  console.log("Authenticated user ID:", userId);
+
   if (!token) {
     return res.status(400).json({ error: "Missing token" });
   }
