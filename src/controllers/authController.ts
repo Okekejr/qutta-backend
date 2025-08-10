@@ -137,37 +137,83 @@ export const appleLogin = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Invalid Apple response" });
     }
 
-    // Use placeholder email if not provided
-    const randomId = crypto.randomBytes(4).toString("hex");
-    const safeEmail =
-      email || `user-${appleUserId}-${randomId}@placeholder.com`;
+    console.log("Apple verification successful:", {
+      appleUserId,
+      email: email || "not provided",
+    });
 
-    // Check if user exists by email
-    let result = await query(`SELECT * FROM users WHERE email = $1`, [
-      safeEmail,
+    // First, try to find user by Apple ID (most reliable)
+    let result = await query(`SELECT * FROM users WHERE apple_id = $1`, [
+      appleUserId,
     ]);
     let user = result[0];
     let isNew = false;
 
+    // If not found by Apple ID, try by email (for existing users who signed up with email)
+    if (!user && email) {
+      result = await query(`SELECT * FROM users WHERE email = $1`, [email]);
+      user = result[0];
+
+      if (user) {
+        // Link existing email user with Apple ID
+        await query(`UPDATE users SET apple_id = $1 WHERE id = $2`, [
+          appleUserId,
+          user.id,
+        ]);
+        console.log("Linked existing email user with Apple ID");
+      }
+    }
+
+    // Create new user if none found
     if (!user) {
       isNew = true;
 
-      // Only fullName.givenName is typically provided
-      const name = fullName?.givenName || "Apple";
-      const lastName = fullName?.familyName || "User";
+      // Generate safe email if not provided by Apple
+      const randomId = crypto.randomBytes(4).toString("hex");
+      const safeEmail =
+        email ||
+        `apple-${appleUserId.substring(0, 8)}-${randomId}@placeholder.com`;
 
-      // Insert new user without password or role
+      // Parse fullName properly
+      const name = fullName || "Apple User";
+      const nameParts = name.trim().split(" ");
+      const firstName = nameParts[0] || "Apple";
+      const lastName = nameParts.slice(1).join(" ") || "User";
+
+      console.log("Creating new Apple user:", {
+        firstName,
+        lastName,
+        email: safeEmail,
+        appleUserId: appleUserId.substring(0, 8) + "...",
+      });
+
       const insertResult = await query(
-        `INSERT INTO users (name, "lastName", email, password, role) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [name, lastName, safeEmail, "", "Client"]
+        `INSERT INTO users (name, "lastName", email, password, role, apple_id) 
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [firstName, lastName, safeEmail, "", "Client", appleUserId]
       );
 
       user = insertResult[0];
     }
 
-    // Generate JWT
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET!, {
-      expiresIn: "7d",
+    // Generate JWT with consistent structure (same as regular login)
+    const token = jwt.sign(
+      {
+        id: user.id,
+        name: user.name,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        created_at: user.created_at,
+      },
+      process.env.JWT_SECRET!,
+      { expiresIn: "7d" }
+    );
+
+    console.log("Apple login successful:", {
+      userId: user.id,
+      isNew,
+      role: user.role,
     });
 
     return res.status(200).json({
